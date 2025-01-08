@@ -113,9 +113,11 @@ class sec_edgar_api:
             ticker_id = self.company_data[self.company_data['cik_str'] == cik]['ticker'].iloc[0]
             form_type = self.filing_metadata[self.filing_metadata['primaryDocument'] == primary_document]['form'].iloc[0]
 
+            # Set filename and path
             pdf_filename = f"{ticker_id}_{cik}_{form_type}.pdf"
             file_path = os.path.join("./reports/sources/", pdf_filename)
 
+            # Write the file in bytes
             with open(file_path, "wb") as pdf_file:
                 pisa_status = pisa.CreatePDF(sec_document.text, dest=pdf_file)
 
