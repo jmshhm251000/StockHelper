@@ -1,3 +1,3 @@
-reports/sources/*
-__pycache__/*
+/reports/sources/*
+/__pycache__/*
 *.py[cod]
