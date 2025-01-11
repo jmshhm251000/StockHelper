@@ -1,0 +1,3 @@
+*.py[cod]
+datascrap/__pycache__/
+/reports/sources
