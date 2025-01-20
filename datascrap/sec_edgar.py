@@ -2,6 +2,7 @@ import requests
 import pandas as pd
 import os
 from xhtml2pdf import pisa
+from requests import Response
 
 
 headers = {
@@ -96,6 +97,27 @@ class sec_edgar_api:
         else:
             raise ValueError("filing_metadata is empty. Cannot retrieve accession number.")
     
+
+    def get_filing_data(self, cik:str, accession_number:str, primary_document:str) -> Response:
+        if self.filing_metadata.empty:
+            print('company_data is empty')
+            return 0
+        
+        url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_number}/{primary_document}"
+        print(url)
+
+        try:
+            sec_document = requests.get(
+                f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_number}/{primary_document}",
+                headers=headers
+            )
+            sec_document.raise_for_status()
+
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Error fetching the document: {e}")
+
+        return sec_document
+
 
     def download_document(self, cik:str, accession_number:str, primary_document:str):
         if self.filing_metadata.empty:
