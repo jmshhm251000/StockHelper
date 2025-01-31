@@ -1,9 +1,11 @@
 from datascrap import sec_edgar
 from analysis import preprocessor
+import pandas as pd
+
 
 if __name__ == "__main__":
     sec = sec_edgar.sec_edgar_api()
-    cik = sec.findCIK('aapl')
+    cik = sec.findCIK('mstr')
 
     print(cik)
 
@@ -14,4 +16,9 @@ if __name__ == "__main__":
 
     #sec.download_document(cik, accession_number, primary_document)
     html = sec.get_filing_data(cik, accession_number, primary_document)
-    preprocessor.clean_data(html)
+
+    chunk_df, text_df, table_df = preprocessor.clean_data(html)
+
+    print(chunk_df.head(30))
+    print(chunk_df.describe())
+    print(chunk_df.info())

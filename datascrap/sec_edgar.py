@@ -3,10 +3,12 @@ import pandas as pd
 import os
 from xhtml2pdf import pisa
 from requests import Response
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 
 
 headers = {
-    'User-Agent': "qhdxbqm123@gmail.com"
+    'User-Agent': "Min (qhdxbqm123@gmail.com)"
 }
 
 class sec_edgar_api:
@@ -106,15 +108,21 @@ class sec_edgar_api:
         url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_number}/{primary_document}"
         print(url)
 
-        try:
-            sec_document = requests.get(
-                f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_number}/{primary_document}",
-                headers=headers
-            )
-            sec_document.raise_for_status()
+        USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
 
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Error fetching the document: {e}")
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")  
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument(f"user-agent={USER_AGENT}")
+
+        driver = webdriver.Chrome(options=options)
+        driver.get(url)
+
+        sec_document = driver.page_source
+
+        driver.quit()
 
         return sec_document
 
