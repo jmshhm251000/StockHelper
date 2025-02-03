@@ -1,0 +1,5 @@
+*.py[cod]
+datascrap/__pycache__/
+analysis/__pycache__/
+/reports/sources
+.env

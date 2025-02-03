@@ -1,4 +1,6 @@
-from datascrap.sec_edgar import scrap
+import asyncio
+from manage import main
 
 if __name__ == "__main__":
-    print(scrap())
+    company_ticker = "mstr"
+    asyncio.run(main(company_ticker))
