@@ -1,8 +1,9 @@
 import requests
 import pandas as pd
 import os
+import time
+import asyncio
 from xhtml2pdf import pisa
-from requests import Response
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
@@ -12,9 +13,11 @@ headers = {
 }
 
 class sec_edgar_api:
-    def __init__(self):
+    def __init__(self, company_ticker):
         self.company_data = self.load_company_tickers()
         self.filing_metadata = pd.DataFrame()
+        self.filings = []
+        self.cik = self.findCIK(company_ticker)
     
 
     def load_company_tickers(self):
@@ -57,10 +60,10 @@ class sec_edgar_api:
             return "The 'ticker' or 'cik_str' column is missing in the DataFrame."
         
     
-    def retrieve_company_filing_metadata(self, cik):
+    def retrieve_company_filing_metadata(self):
         try:
             filing_metadata = requests.get(
-                f'https://data.sec.gov/submissions/CIK{cik}.json',
+                f'https://data.sec.gov/submissions/CIK{self.cik}.json',
                 headers=headers
             )
             # Create dataframe from a dictionary
@@ -75,7 +78,7 @@ class sec_edgar_api:
             self.filing_metadata = df
         
         except requests.exceptions.RequestException as e:
-            print(f"Failed to fetch filings metadata for CIK {cik}: {e}")
+            print(f"Failed to fetch filings metadata for CIK {self.cik}: {e}")
 
 
     def get_accession_number_by_index(self, index: int) -> str:
@@ -98,14 +101,48 @@ class sec_edgar_api:
                 raise IndexError("Index out of range. Please provide a valid index.")
         else:
             raise ValueError("filing_metadata is empty. Cannot retrieve accession number.")
+        
+    
+    def get_form_type(self, index: int) -> str:
+        # Retrieve form type from the dataframe
+        if not self.filing_metadata.empty:
+            try:
+                return self.filing_metadata.iloc[index]['form']
+            except IndexError:
+                raise IndexError("Index out of range. Please provide a valid index.")
+        else:
+            raise ValueError("filing_metadata is empty. Cannot retrieve accession number.")
+        
+    
+    def get_report_date(self, index: int) -> str:
+        if not self.filing_metadata.empty:
+            try:
+                return self.filing_metadata.iloc[index]['reportDate']
+            except IndexError:
+                raise IndexError("Index out of range. Please provide a valid index.")
+        else:
+            raise ValueError("filing_metadata is empty. Cannot retrieve accession number.")
     
 
-    def get_filing_data(self, cik:str, accession_number:str, primary_document:str) -> Response:
+    def get_metadata(self, index: int) -> str:
+        """
+        Returns:
+            - accession_number (str)
+            - primary_document (str)
+            - form_type (str)
+            - report_date (str)
+        """
+        return self.get_accession_number_by_index(index), self.get_primary_document_by_index(index), self.get_form_type(index), self.get_report_date(index)
+
+
+    def get_filing_data(self, index) -> str:
         if self.filing_metadata.empty:
             print('company_data is empty')
             return 0
         
-        url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_number}/{primary_document}"
+        accession_number, primary_document, _, _ = self.get_metadata(index)
+
+        url = f"https://www.sec.gov/Archives/edgar/data/{int(self.cik)}/{accession_number}/{primary_document}"
         print(url)
 
         USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
@@ -127,17 +164,102 @@ class sec_edgar_api:
         return sec_document
 
 
+    async def _get_filing_data(self) -> list[str]:
+        """
+        Asynchronously fetches HTML filing data for all filings in self.filing_metadata.
+        Returns a list of HTML content.
+        """
+        if self.filing_metadata.empty:
+            print("Filing metadata is empty")
+            return []
+
+        USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument(f"user-agent={USER_AGENT}")
+
+        async def fetch_filing(index: int) -> str:
+            """
+            Fetches the SEC filing HTML document asynchronously for a given index.
+            """
+            accession_number, primary_document, _, _ = self.get_metadata(index)
+
+            url = f"https://www.sec.gov/Archives/edgar/data/{int(self.cik)}/{accession_number}/{primary_document}"
+            print(f"Fetching: {url}")
+
+            # Function to run Selenium in a separate thread
+            def fetch_html():
+                driver = webdriver.Chrome(options=options)
+                driver.get(url)
+                time.sleep(5)
+                page_source = driver.page_source
+                driver.quit()
+                return page_source
+
+            return await asyncio.to_thread(fetch_html)  # Runs Selenium in a separate thread
+
+        # Create a list of tasks for each filing
+        tasks = [fetch_filing(index) for index in range(len(self.filing_metadata))]
+
+        # Run all requests concurrently
+        results = await asyncio.gather(*tasks)
+
+        return results
+
+
+    async def get_filings(self):
+        self.filings =  await self._get_filing_data()
+
+        missing_indices = [i for i, filing in enumerate(self.filings) if not filing]
+
+        if missing_indices:
+            print(f"⚠️ Warning: {len(missing_indices)} filings failed to retrieve.")
+            await self._retry_missing_filings(missing_indices)
+
+
+    async def _retry_missing_filings(self, missing_indices):
+        """Reattempt downloading the missing filings asynchronously."""
+        print(f"🔄 Retrying {len(missing_indices)} missing filings...")
+
+        # Retry only the missing filings
+        tasks = [self._fetch_filing(i) for i in missing_indices]
+        results = await asyncio.gather(*tasks)
+
+        # Update `self.filings` with the retried results
+        for i, result in zip(missing_indices, results):
+            self.filings[i] = result
+
+        print(f"✅ Finished retrying. Missing filings recovered: {sum(bool(r) for r in results)}")
+
+
     def download_document(self, cik:str, accession_number:str, primary_document:str):
         if self.filing_metadata.empty:
             print('company_data is empty')
             return 0
 
         try:
-            sec_document = requests.get(
-                f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_number}/{primary_document}",
-                headers=headers
-            )
-            sec_document.raise_for_status()
+            url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_number}/{primary_document}"
+            print(url)
+
+            USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+
+            options = Options()
+            options.add_argument("--headless")
+            options.add_argument("--disable-gpu")  
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument(f"user-agent={USER_AGENT}")
+
+            driver = webdriver.Chrome(options=options)
+            driver.get(url)
+
+            sec_document = driver.page_source
+
+            driver.quit()
 
             # Retrieve ticker_id and form type from the dataframe
             ticker_id = self.company_data[self.company_data['cik_str'] == cik]['ticker'].iloc[0]
