@@ -9,7 +9,7 @@ from selenium.webdriver.chrome.options import Options
 
 
 headers = {
-    'User-Agent': "Min (qhdxbqm123@gmail.com)"
+    'User-Agent': ""
 }
 
 class sec_edgar_api:
