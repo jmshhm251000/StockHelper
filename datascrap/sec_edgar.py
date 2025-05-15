@@ -3,14 +3,17 @@ import pandas as pd
 import os
 import time
 import asyncio
+import json
 from xhtml2pdf import pisa
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from dotenv import load_dotenv
 
 
-headers = {
-    'User-Agent': ""
-}
+load_dotenv()
+headers_str = os.getenv("HEADERS")  # This is still a string
+headers = json.loads(headers_str)
+
 
 class sec_edgar_api:
     def __init__(self, company_ticker):
@@ -21,6 +24,7 @@ class sec_edgar_api:
     
 
     def load_company_tickers(self):
+        """Load CIK json from SEC"""
         try:
             #get all companyTickers
             companyTickers = requests.get(
@@ -43,6 +47,7 @@ class sec_edgar_api:
 
 
     def findCIK(self, ticker: str) -> int:
+        """Find CIK that matches the ticker"""
         if self.company_data.empty:
             print('company_data is empty')
             return 0
@@ -61,6 +66,7 @@ class sec_edgar_api:
         
     
     def retrieve_company_filing_metadata(self):
+        """Retrieve company filing from SEC EDGAR"""
         try:
             filing_metadata = requests.get(
                 f'https://data.sec.gov/submissions/CIK{self.cik}.json',
@@ -82,7 +88,7 @@ class sec_edgar_api:
 
 
     def get_accession_number_by_index(self, index: int) -> str:
-        # Retrieve accession_number from the dataframe
+        """Retrieve accession_number from the dataframe"""
         if not self.filing_metadata.empty:
             try:
                 return self.filing_metadata.iloc[index]['accessionNumber'].replace('-', '')
@@ -93,7 +99,7 @@ class sec_edgar_api:
     
 
     def get_primary_document_by_index(self, index: int) -> str:
-        # Retrieve primary_document from the dataframe
+        """Retrieve primary_document from the dataframe"""
         if not self.filing_metadata.empty:
             try:
                 return self.filing_metadata.iloc[index]['primaryDocument']
@@ -104,7 +110,7 @@ class sec_edgar_api:
         
     
     def get_form_type(self, index: int) -> str:
-        # Retrieve form type from the dataframe
+        """Retrieve form type from the dataframe"""
         if not self.filing_metadata.empty:
             try:
                 return self.filing_metadata.iloc[index]['form']
@@ -115,6 +121,7 @@ class sec_edgar_api:
         
     
     def get_report_date(self, index: int) -> str:
+        """Retrieve data of the report"""
         if not self.filing_metadata.empty:
             try:
                 return self.filing_metadata.iloc[index]['reportDate']
