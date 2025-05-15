@@ -16,6 +16,7 @@ class vectordb:
     def __init__(self, embed_model):
         self.chroma_client = chromadb.PersistentClient(path=os.path.join(os.getcwd(), "chroma_db"))
         self.collection = self.chroma_client.get_or_create_collection(name="sec_filings", metadata={"hnsw:space": "ip"})
+        print(self.collection.count())
 
         self.vector_store = ChromaVectorStore(chroma_collection=self.collection)
         self.index = VectorStoreIndex.from_vector_store(vector_store=self.vector_store, embed_model=embed_model)
@@ -66,9 +67,39 @@ class vectordb:
             ],
         )
 
-        self._llm = Ollama(model="llama3.2", request_timeout=60.0)
+        self.system_prompt =self.system_prompt = """You are an AI financial analyst specializing in SEC filings analysis.
+
+### Instructions:
+- Summarize the company's **financial performance**, including revenue, profit margins, cash flow, and expenses.
+- Identify and assess **risk factors** mentioned in the SEC filings.
+- Compare the current filing with **previous filings**, highlighting significant changes.
+- Analyze **market trends** affecting the company's future.
+- Provide a **forecast** on potential stock price movements based on the filing.
+- Deliver a final investment recommendation: **Buy, Hold, or Sell**, with justifications.
+
+### Response Format (JSON Output):
+{
+    "summary": {
+        "financial_performance": "<Key financial metrics and trends>",
+        "risk_factors": "<Major risks impacting the company>",
+        "market_trends": "<Broader market trends affecting the company>",
+        "comparison": "<Changes compared to previous filings>"
+    },
+    "analysis": {
+        "forecast": "<Predicted stock performance based on filings and trends>",
+        "recommendation": "<Decision: Buy, Hold, or Sell, with reasoning>"
+    }
+}
+
+### Guidelines:
+- Base responses strictly on retrieved SEC filings, avoiding speculation.
+- Ensure factual accuracy by cross-referencing retrieved information.
+- If a required data point is **not found in the retrieved documents**, **omit** it instead of making assumptions.
+"""
+
+        self._llm = Ollama(model="llama3.2", request_timeout=60.0, system_prompt=self.system_prompt)
         Settings.llm = self._llm
-        self.retriever = VectorIndexAutoRetriever(index=self.index, llm=self._llm, vector_store_info=self.vector_store_info)
+        self.retriever = VectorIndexAutoRetriever(index=self.index, llm=self._llm, prompt_template_str=self.system_prompt, vector_store_info=self.vector_store_info, similarity_top_k=20)
         self.query_engine = RetrieverQueryEngine(retriever=self.retriever)
 
     
@@ -76,7 +107,7 @@ class vectordb:
         for _, row in df.iterrows():
             doc_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, row["content_chunk"]))  # Unique ID
 
-            # 🔍 Check if ID already exists
+            # Check if ID already exists
             existing_docs = self.collection.get(ids=[doc_id])
             
             if not existing_docs["ids"]:  # If the ID doesn't exist, insert it
@@ -103,5 +134,12 @@ class vectordb:
         query_bundle = QueryBundle(query_text)
         response = self.query_engine.query(query_bundle)
         
-        for node in response.source_nodes:  # Accessing source_nodes properly
+        for node in response.source_nodes:
             print(node.metadata, node.text)
+    
+
+    def check_chroma_db(self):
+        if self.collection.count() == 0:
+            print("⚠️ WARNING: No embeddings found in ChromaDB. Ensure data is stored first.")
+        else:
+            print(f"✅ ChromaDB contains {self.collection.count()} documents.")

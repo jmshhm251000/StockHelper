@@ -6,13 +6,23 @@ from datascrap.sec_edgar import sec_edgar_api
 from analysis import preprocessor, embedding
 
 class SECDataProcessor:
-    def __init__(self, company_ticker):
-        self.company_ticker = company_ticker
+    def __init__(self, company_ticker="aapl"):
+        self._company_ticker = company_ticker
         self.sec_api = sec_edgar_api(company_ticker)
         self.filings = []
         self.chunk_df = pd.DataFrame()
         self.text_df = pd.DataFrame()
         self.table_df = pd.DataFrame()
+
+
+    @property
+    def ticker(self):
+        return self._company_ticker
+    
+
+    @ticker.setter
+    def company_ticker(self, ticker):
+        self._company_ticker = ticker
 
 
     async def fetch_filings(self):
@@ -26,7 +36,7 @@ class SECDataProcessor:
         """Processes all filings using preprocessor."""
         all_chunk_dfs, all_text_dfs, all_table_dfs = [], [], []
 
-        for index, filing_html in enumerate(tqdm(self.filings, desc="Processing Filings")):
+        for index, filing_html in enumerate(tqdm_asyncio(self.filings, desc="Processing Filings")):
             if not filing_html.strip():
                 print(f"⚠️ Warning: Filing {index + 1} is empty. Skipping processing.")
                 continue

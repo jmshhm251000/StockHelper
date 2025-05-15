@@ -6,3 +6,5 @@ src/__pycache__/
 /reports/sources
 .env
 chroma_db/
+tables.csv
+.DS_Store
